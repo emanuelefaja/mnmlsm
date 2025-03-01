@@ -127,7 +127,10 @@
             class="w-full min-h-full bg-white focus:outline-none p-4"
             placeholder="Start typing..."
             x-model="activeNoteContent"
-            @input="activeNoteContent = $event.target.value"
+            @input="updateActiveNoteContent($event.target.value)"
+            x-ref="editor"
+            @keydown.ctrl.s.prevent
+            @keydown.meta.s.prevent
           ></textarea>
         </div>
       </div>
@@ -147,6 +150,8 @@
         startWidth: 0,
         showSidebar: true,
         showNotesAbove: false,
+        saveTimeout: null,
+        activeNoteContent: '',
         
         get filteredNotes() {
           return this.notes.filter(note => 
@@ -155,30 +160,34 @@
           )
         },
         
-        activeNoteContent: {
-          get() {
-            const note = this.notes.find(n => n.path === this.selectedNoteId)
-            return note ? String(note.content) : ''
-          },
-          async set(value) {
-            const note = this.notes.find(n => n.path === this.selectedNoteId)
-            if (note) {
-              // Update local state immediately
-              note.content = value;
-              note.updated = Date.now();
-              
-              // Force array update for reactivity
-              this.notes = [...this.notes];
-              
-              // Save to file system
-              await window.electronAPI.saveNote(note.path, value);
+        getActiveNoteContent() {
+          const note = this.notes.find(n => n.path === this.selectedNoteId)
+          return note ? String(note.content) : ''
+        },
+        
+        async updateActiveNoteContent(value) {
+          const note = this.notes.find(n => n.path === this.selectedNoteId)
+          if (note) {
+            console.log('Updating note:', note.path, 'with content:', value)
+            // Immediate local update
+            note.content = value;
+            note.updated = Date.now();
+            this.notes = [...this.notes];
+            
+            // Immediate save without debounce
+            try {
+              console.log('Saving note:', note.path)
+              await window.electronAPI.updateNote(note.path, value)
+              console.log('Save successful for:', note.path)
+            } catch (error) {
+              console.error('Save error:', error)
             }
           }
         },
         
         selectNote(path) {
           this.selectedNoteId = path;
-          // Force update of activeNoteContent
+          // Update activeNoteContent when selecting a note
           const note = this.notes.find(n => n.path === path);
           if (note) {
             this.activeNoteContent = note.content;
@@ -235,7 +244,7 @@
             // Force selection of first note with proper reactivity
             if (this.notes.length > 0) {
               this.selectedNoteId = this.notes[0].path;
-              // Force refresh of activeNoteContent
+              // Set activeNoteContent directly
               this.activeNoteContent = this.notes[0].content;
             }
           } catch (error) {
@@ -259,11 +268,11 @@
 
           // Generate base filename without counter
           const baseFilename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`;
-          const content = `# ${title}\n\n`;
+          const content = ""; // Empty content instead of adding a title
           
           try {
             const fullPath = await window.electronAPI.joinPaths(this.notesDir, baseFilename);
-            const filePath = await window.electronAPI.saveNote(fullPath, content);
+            const filePath = await window.electronAPI.createNote(fullPath, content);
 
             // Add to notes list and select it
             const newNote = {

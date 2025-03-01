@@ -119,14 +119,21 @@ function watchDirectory(dir) {
   
   watcher = chokidar.watch(dir, {
     ignoreInitial: true,
-    awaitWriteFinish: true
-  });
-
-  watcher.on('all', (event) => {
-    if (['add', 'change', 'unlink'].includes(event)) {
-      win.webContents.send('notes-updated');
+    awaitWriteFinish: {
+      stabilityThreshold: 200,
+      pollInterval: 100
     }
   });
+
+  watcher.on('all', (event, path) => {
+    console.log(`File event: ${event} on ${path}`)
+    if (['add', 'change', 'unlink'].includes(event)) {
+      // Add slight delay to allow disk writes to complete
+      setTimeout(() => {
+        win.webContents.send('notes-updated')
+      }, 300)
+    }
+  })
 }
 
 ipcMain.handle('choose-notes-dir', async () => {
@@ -149,11 +156,22 @@ ipcMain.handle('get-notes', (_, dir) => {
   return readNotesDirectory(dir);
 });
 
-ipcMain.handle('save-note', async (_, fullPath, content) => {
+ipcMain.handle('update-note', async (_, path, content) => {
+  try {
+    console.log(`Saving to ${path} with content:`, content);
+    await fs.promises.writeFile(path, content);
+    console.log('Save successful');
+    return path;
+  } catch (error) {
+    console.error('Error saving note:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('create-note', async (_, fullPath, content) => {
   try {
     if (!fullPath) throw new Error('File path is required');
     
-    // Get unique filename
     let counter = 1;
     const parsed = path.parse(fullPath);
     let uniquePath = fullPath;
@@ -165,10 +183,10 @@ ipcMain.handle('save-note', async (_, fullPath, content) => {
       );
     }
 
-    fs.writeFileSync(uniquePath, content);
+    await fs.promises.writeFile(uniquePath, content);
     return uniquePath;
   } catch (error) {
-    console.error('Error saving note:', error);
+    console.error('Error creating note:', error);
     throw error;
   }
 });
@@ -179,20 +197,24 @@ function readNotesDirectory(dir) {
   return fs.readdirSync(dir)
     .filter(f => f.endsWith('.md') || f.endsWith('.txt'))
     .map(f => {
-      const filePath = path.join(dir, f);
-      const stats = fs.statSync(filePath);
-      const content = fs.readFileSync(filePath, 'utf-8');
-      console.log(`Loaded file: ${filePath} with ${content.length} chars`);
-      
-      return {
-        path: filePath,
-        title: extractTitle(content, f),
-        content,
-        created: stats.birthtimeMs,
-        updated: stats.mtimeMs
-      };
+      const filePath = path.join(dir, f)
+      try {
+        const stats = fs.statSync(filePath)
+        const content = fs.readFileSync(filePath, 'utf-8')
+        return {
+          path: filePath,
+          title: extractTitle(content, f),
+          content,
+          created: stats.birthtimeMs,
+          updated: stats.mtimeMs
+        }
+      } catch (error) {
+        console.error('Error reading file:', filePath, error)
+        return null
+      }
     })
-    .sort((a, b) => b.updated - a.updated);
+    .filter(note => note !== null)
+    .sort((a, b) => b.updated - a.updated)
 }
 
 function extractTitle(content, filename) {
