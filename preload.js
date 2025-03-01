@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateNote: (path, content) => ipcRenderer.invoke('update-note', path, content),
   renameNote: (oldPath, newPath) => ipcRenderer.invoke('rename-note', oldPath, newPath),
   getPathInfo: (filePath) => ipcRenderer.invoke('get-path-info', filePath),
+  onDarkModeToggle: (callback) => ipcRenderer.on('toggle-dark-mode', (_, isDarkMode) => callback(isDarkMode)),
 })
 
 window.testAPI = {

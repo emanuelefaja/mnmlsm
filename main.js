@@ -2,7 +2,7 @@ try {
   require('electron-reloader')(module)
 } catch (_) {}
 
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, Menu, ipcMain, dialog, globalShortcut } = require('electron')
 const path = require('path')
 const chokidar = require('chokidar')
 const fs = require('fs')
@@ -14,6 +14,9 @@ let Store;
 
 // Declare win at the top level
 let win;
+
+// Add this at the top level of the file, outside any functions
+let isDarkMode = false;
 
 const createWindow = () => {
   // Use the global win variable instead of local const
@@ -71,6 +74,20 @@ const createWindow = () => {
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Dark Mode',
+          accelerator: process.platform === 'darwin' ? 'Control+Command+K' : 'Control+Alt+K',
+          type: 'checkbox',
+          checked: isDarkMode,
+          click: () => {
+            isDarkMode = !isDarkMode;
+            win.webContents.send('toggle-dark-mode', isDarkMode);
+            // Update the menu item's checked state
+            Menu.getApplicationMenu().getMenuItemById('dark-mode').checked = isDarkMode;
+          },
+          id: 'dark-mode'
+        },
+        { type: 'separator' },
         { role: 'reload' },
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
@@ -99,7 +116,34 @@ const createWindow = () => {
   win.loadFile('index.html') 
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createWindow()
+  
+  // Register global shortcut for dark mode toggle
+  const shortcutKey = process.platform === 'darwin' 
+    ? 'Control+Command+K'  // macOS: Ctrl+Cmd+K
+    : 'Control+Alt+K';     // Windows/Linux: Ctrl+Alt+K
+    
+  globalShortcut.register(shortcutKey, () => {
+    isDarkMode = !isDarkMode;
+    win.webContents.send('toggle-dark-mode', isDarkMode);
+    
+    // Update the menu item's checked state
+    const menuItem = Menu.getApplicationMenu().getMenuItemById('dark-mode');
+    if (menuItem) {
+      menuItem.checked = isDarkMode;
+    }
+  });
+  
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+// Clean up shortcuts when app is quitting
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
