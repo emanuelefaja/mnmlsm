@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mnmlism</title>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .disable-select {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div x-data="app()" class="h-screen flex flex-col">
+    <!-- Search bar -->
+    <div class="p-0 border-b border-gray-200 flex items-center">
+      <input 
+        type="text" 
+        placeholder="Search or create notes..."
+        class="w-full h-full pl-4 pr-0 py-0 rounded-none border-transparent focus:outline-none focus:border-transparent text-sm"
+        x-model="searchQuery"
+      >
+      <div class="flex items-center pr-2 space-x-2">
+        <!-- Sidebar view toggle -->
+        <button 
+          class="p-1 hover:bg-gray-100 rounded"
+          :class="{ 'bg-gray-100': showSidebar }"
+          @click="showSidebar = !showSidebar; showNotesAbove = false"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 4V20 M12 4V20 M18 4V20"/>
+          </svg>
+        </button>
+
+        <!-- Table view toggle -->
+        <button 
+          class="p-1 hover:bg-gray-100 rounded"
+          :class="{ 'bg-gray-100': showNotesAbove }"
+          @click="showNotesAbove = !showNotesAbove; showSidebar = false"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Content area -->
+    <div class="flex-1 flex border-t border-gray-200">
+      <!-- Sidebar -->
+      <div 
+        class="bg-gray-50 border-r border-gray-200 relative transition-all"
+        :style="`width: ${showSidebar ? sidebarWidth + 'px' : '0'}`"
+        x-show="!showNotesAbove"
+      >
+        <!-- Resize handle -->
+        <div 
+          class="absolute -right-[5px] w-[10px] top-0 bottom-0 cursor-col-resize"
+          @mousedown="startResize"
+          x-ref="resizeHandle"
+        ></div>
+        
+        <div class="p-4 h-full overflow-auto">
+          <div x-show="!notes.length" class="p-4 text-gray-400 text-sm">
+            Loading notes...
+          </div>
+          <div class="space-y-2">
+            <template x-for="note in filteredNotes" :key="note.path">
+              <div 
+                class="p-2 hover:bg-gray-100 cursor-pointer rounded group"
+                :class="{ 'bg-blue-50': note.path === selectedNoteId }"
+                @click="selectNote(note.path)"
+              >
+                <div class="flex flex-col min-w-0">
+                  <span class="font-semibold text-black text-sm truncate" x-text="note.title"></span>
+                  <span class="text-gray-400 text-xs truncate" x-text="note.content.split('\n')[0]"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="flex-1 flex flex-col">
+        <!-- Notes above content -->
+        <div 
+          class="bg-gray-50 border-b border-gray-200 overflow-auto"
+          x-show="showNotesAbove"
+          style="max-height: 240px"
+        >
+          <div class="p-4">
+            <table class="w-full table-auto text-sm">
+              <thead class="text-xs font-semibold text-gray-500">
+                <tr>
+                  <th class="text-left pb-2">Name</th>
+                  <th class="text-left pb-2">Created</th>
+                  <th class="text-left pb-2">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="note in filteredNotes" :key="note.path">
+                  <tr 
+                    class="hover:bg-gray-100 cursor-pointer"
+                    :class="{ 'bg-blue-50': note.path === selectedNoteId }"
+                    @click="selectNote(note.path)"
+                  >
+                    <td class="py-2 pr-4 truncate max-w-[200px]" x-text="note.title"></td>
+                    <td class="py-2 pr-4 text-gray-500" x-text="new Date(note.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(note.created).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })"></td>
+                    <td class="py-2 text-gray-500" x-text="new Date(note.updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(note.updated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        
+        <!-- Text area -->
+        <textarea 
+          class="w-full h-full bg-white focus:outline-none p-4"
+          placeholder="Start typing..."
+          x-model="activeNoteContent"
+          @input="activeNoteContent = $event.target.value"
+        ></textarea>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function app() {
+      return {
+        searchQuery: '',
+        notes: [],
+        notesDir: null,
+        selectedNoteId: null,
+        sidebarWidth: 256,
+        isResizing: false,
+        startX: 0,
+        startWidth: 0,
+        showSidebar: true,
+        showNotesAbove: false,
+        
+        get filteredNotes() {
+          return this.notes.filter(note => 
+            note.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+            note.content.toLowerCase().includes(this.searchQuery.toLowerCase())
+          )
+        },
+        
+        activeNoteContent: {
+          get() {
+            const note = this.notes.find(n => n.path === this.selectedNoteId)
+            return note ? String(note.content) : ''
+          },
+          async set(value) {
+            const note = this.notes.find(n => n.path === this.selectedNoteId)
+            if (note) {
+              note.content = value;
+              note.updated = Date.now();
+              await window.electronAPI.saveNote(note.path, value);
+            }
+          }
+        },
+        
+        selectNote(path) {
+          console.log('Selecting note path:', path);
+          this.selectedNoteId = path;
+          console.log('Selected note content:', 
+            this.notes.find(n => n.path === path)?.content);
+        },
+        
+        startResize(e) {
+          this.isResizing = true
+          this.startX = e.clientX
+          this.startWidth = this.sidebarWidth
+          document.body.classList.add('disable-select', 'cursor-col-resize')
+          
+          document.addEventListener('mousemove', this.handleResize)
+          document.addEventListener('mouseup', this.stopResize)
+        },
+        
+        handleResize(e) {
+          if (!this.isResizing) return
+          const delta = e.clientX - this.startX
+          this.sidebarWidth = Math.min(Math.max(200, this.startWidth + delta), 400)
+        },
+        
+        stopResize() {
+          this.isResizing = false
+          document.body.classList.remove('disable-select', 'cursor-col-resize')
+          document.removeEventListener('mousemove', this.handleResize)
+          document.removeEventListener('mouseup', this.stopResize)
+        },
+        
+        async init() {
+          this.handleResize = this.handleResize.bind(this)
+          this.stopResize = this.stopResize.bind(this)
+          
+          try {
+            this.notesDir = await window.electronAPI.chooseNotesDirectory();
+            await this.loadNotes();
+          } catch (error) {
+            console.error('Error initializing notes:', error);
+          }
+          
+          // Watch for changes
+          window.electronAPI.onNotesUpdate(() => this.loadNotes());
+        },
+        
+        async loadNotes() {
+          try {
+            const notes = await window.electronAPI.getNotes(this.notesDir);
+            this.notes = notes.map(note => ({
+              ...note,
+              content: note.content || ''
+            }));
+            
+            // Force selection of first note
+            if (this.notes.length > 0) {
+              this.selectedNoteId = this.notes[0].path;
+              console.log('Initial note selected:', this.selectedNoteId);
+            }
+          } catch (error) {
+            console.error('Error loading notes:', error);
+            this.notes = [];
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html> 
