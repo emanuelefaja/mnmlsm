@@ -159,18 +159,26 @@
           async set(value) {
             const note = this.notes.find(n => n.path === this.selectedNoteId)
             if (note) {
+              // Update local state immediately
               note.content = value;
               note.updated = Date.now();
+              
+              // Force array update for reactivity
+              this.notes = [...this.notes];
+              
+              // Save to file system
               await window.electronAPI.saveNote(note.path, value);
             }
           }
         },
         
         selectNote(path) {
-          console.log('Selecting note path:', path);
           this.selectedNoteId = path;
-          console.log('Selected note content:', 
-            this.notes.find(n => n.path === path)?.content);
+          // Force update of activeNoteContent
+          const note = this.notes.find(n => n.path === path);
+          if (note) {
+            this.activeNoteContent = note.content;
+          }
         },
         
         startResize(e) {
@@ -216,13 +224,15 @@
             const notes = await window.electronAPI.getNotes(this.notesDir);
             this.notes = notes.map(note => ({
               ...note,
-              content: note.content || ''
+              // Ensure content is properly initialized
+              content: String(note.content || '')
             }));
             
-            // Force selection of first note
+            // Force selection of first note with proper reactivity
             if (this.notes.length > 0) {
               this.selectedNoteId = this.notes[0].path;
-              console.log('Initial note selected:', this.selectedNoteId);
+              // Force refresh of activeNoteContent
+              this.activeNoteContent = this.notes[0].content;
             }
           } catch (error) {
             console.error('Error loading notes:', error);
