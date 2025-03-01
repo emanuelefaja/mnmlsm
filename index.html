@@ -22,6 +22,7 @@
         placeholder="Search or create notes..."
         class="w-full h-full pl-4 pr-0 py-0 rounded-none border-transparent focus:outline-none focus:border-transparent text-sm"
         x-model="searchQuery"
+        @keydown.enter.prevent="handleSearchEnter"
       >
       <div class="flex items-center pr-2 space-x-2">
         <!-- Sidebar view toggle -->
@@ -226,6 +227,47 @@
           } catch (error) {
             console.error('Error loading notes:', error);
             this.notes = [];
+          }
+        },
+        
+        async handleSearchEnter(e) {
+          const hasModifier = e.metaKey || e.ctrlKey;
+          const shouldCreateNew = this.filteredNotes.length === 0;
+          
+          if ((shouldCreateNew && !hasModifier) || hasModifier) {
+            await this.createNote();
+          }
+        },
+
+        async createNote() {
+          const title = this.searchQuery.trim();
+          if (!title) return;
+
+          // Generate base filename without counter
+          const baseFilename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`;
+          const content = `# ${title}\n\n`;
+          
+          try {
+            const fullPath = await window.electronAPI.joinPaths(this.notesDir, baseFilename);
+            const filePath = await window.electronAPI.saveNote(fullPath, content);
+
+            // Add to notes list and select it
+            const newNote = {
+              path: filePath,
+              title,
+              content,
+              created: Date.now(),
+              updated: Date.now()
+            };
+            
+            this.notes = [newNote, ...this.notes];
+            this.selectedNoteId = filePath;
+            this.searchQuery = '';
+            
+            await this.loadNotes();
+          } catch (error) {
+            console.error('Error creating note:', error);
+            alert(`Error creating note: ${error.message}`);
           }
         }
       }

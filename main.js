@@ -12,8 +12,12 @@ let Store;
   Store = storeModule.default;
 })();
 
+// Declare win at the top level
+let win;
+
 const createWindow = () => {
-  const win = new BrowserWindow({
+  // Use the global win variable instead of local const
+  win = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
@@ -120,7 +124,7 @@ function watchDirectory(dir) {
 
   watcher.on('all', (event) => {
     if (['add', 'change', 'unlink'].includes(event)) {
-      mainWindow.webContents.send('notes-updated');
+      win.webContents.send('notes-updated');
     }
   });
 }
@@ -145,8 +149,28 @@ ipcMain.handle('get-notes', (_, dir) => {
   return readNotesDirectory(dir);
 });
 
-ipcMain.handle('save-note', (_, filePath, content) => {
-  fs.writeFileSync(filePath, content);
+ipcMain.handle('save-note', async (_, fullPath, content) => {
+  try {
+    if (!fullPath) throw new Error('File path is required');
+    
+    // Get unique filename
+    let counter = 1;
+    const parsed = path.parse(fullPath);
+    let uniquePath = fullPath;
+    
+    while (fs.existsSync(uniquePath)) {
+      uniquePath = path.join(
+        parsed.dir, 
+        `${parsed.name}${counter++}${parsed.ext}`
+      );
+    }
+
+    fs.writeFileSync(uniquePath, content);
+    return uniquePath;
+  } catch (error) {
+    console.error('Error saving note:', error);
+    throw error;
+  }
 });
 
 function readNotesDirectory(dir) {
@@ -178,4 +202,9 @@ function extractTitle(content, filename) {
     : path.basename(filename, path.extname(filename));
 }
 
-ipcMain.handle('test', () => 'API working'); 
+ipcMain.handle('test', () => 'API working');
+
+// Add handler for path joining
+ipcMain.handle('join-paths', (_, ...paths) => {
+  return path.join(...paths);
+}); 
