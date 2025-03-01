@@ -229,4 +229,40 @@ ipcMain.handle('test', () => 'API working');
 // Add handler for path joining
 ipcMain.handle('join-paths', (_, ...paths) => {
   return path.join(...paths);
+});
+
+// Add this IPC handler
+ipcMain.handle('rename-note', async (_, oldPath, newPath) => {
+  try {
+    // Check if target file already exists
+    if (fs.existsSync(newPath)) {
+      let counter = 1;
+      const parsed = path.parse(newPath);
+      let uniquePath = newPath;
+      
+      while (fs.existsSync(uniquePath)) {
+        uniquePath = path.join(
+          parsed.dir, 
+          `${parsed.name}${counter++}${parsed.ext}`
+        );
+      }
+      
+      newPath = uniquePath;
+    }
+    
+    await fs.promises.rename(oldPath, newPath);
+    return newPath;
+  } catch (error) {
+    console.error('Error renaming file:', error);
+    throw error;
+  }
+});
+
+// Add this IPC handler
+ipcMain.handle('get-path-info', (_, filePath) => {
+  return {
+    dirname: path.dirname(filePath),
+    basename: path.basename(filePath),
+    extname: path.extname(filePath)
+  };
 }); 
