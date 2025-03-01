@@ -288,6 +288,11 @@
             this.searchQuery = '';
             
             await this.loadNotes();
+            
+            // Focus the editor after creating the note
+            this.$nextTick(() => {
+              this.$refs.editor.focus();
+            });
           } catch (error) {
             console.error('Error creating note:', error);
             alert(`Error creating note: ${error.message}`);
