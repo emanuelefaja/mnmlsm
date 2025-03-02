@@ -54,6 +54,11 @@ const createWindow = () => {
           accelerator: 'CmdOrCtrl+N',
           click: () => win.webContents.send('new-note')
         },
+        {
+          label: 'Focus Search',
+          accelerator: 'CmdOrCtrl+L',
+          click: () => win.webContents.send('focus-search')
+        },
         { type: 'separator' },
         { role: 'close' }
       ]

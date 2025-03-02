@@ -280,6 +280,11 @@
               document.documentElement.classList.remove('dark');
             }
           });
+          
+          // Listen for focus search event
+          window.electronAPI.onFocusSearch(() => {
+            this.focusSearchBar();
+          });
         },
         
         async loadNotes() {
@@ -475,6 +480,10 @@
               e.preventDefault();
               this.clearSearch();
             }
+          } else if (e.key === 'Escape' && this.searchQuery) {
+            // Clear search even if there are no results
+            e.preventDefault();
+            this.clearSearch();
           }
         },
 
@@ -498,6 +507,14 @@
               this.activeNoteContent = note.content;
             }
           }
+          
+          // Keep the search input focused
+          this.$nextTick(() => {
+            const searchInput = document.querySelector('input[x-model="searchQuery"]');
+            if (searchInput) {
+              searchInput.focus();
+            }
+          });
         }
       }
     }
