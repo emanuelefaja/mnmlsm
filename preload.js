@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onDarkModeToggle: (callback) => ipcRenderer.on('toggle-dark-mode', (_, isDarkMode) => callback(isDarkMode)),
   onFocusSearch: (callback) => ipcRenderer.on('focus-search', callback),
   onNavigateNote: (callback) => ipcRenderer.on('navigate-note', (_, direction) => callback(direction)),
+  onRefreshSettingsNote: (callback) => ipcRenderer.on('refresh-settings-note', (_, isDarkMode) => callback(isDarkMode)),
 })
 
 window.testAPI = {

@@ -99,6 +99,8 @@ const createWindow = () => {
             win.webContents.send('toggle-dark-mode', isDarkMode);
             // Update the menu item's checked state
             Menu.getApplicationMenu().getMenuItemById('dark-mode').checked = isDarkMode;
+            // Notify to refresh the settings note
+            win.webContents.send('refresh-settings-note', isDarkMode);
           },
           id: 'dark-mode'
         },
@@ -148,6 +150,9 @@ app.whenReady().then(() => {
     if (menuItem) {
       menuItem.checked = isDarkMode;
     }
+    
+    // Notify to refresh the settings note
+    win.webContents.send('refresh-settings-note', isDarkMode);
   });
   
   app.on('activate', () => {
@@ -217,6 +222,41 @@ ipcMain.handle('get-notes', (_, dir) => {
 
 ipcMain.handle('update-note', async (_, path, content) => {
   try {
+    // Handle settings note updates
+    if (path === "system://settings") {
+      // Parse dark mode setting
+      const darkModeMatch = content.match(/Dark Mode:\s*(\S+)/i);
+      if (darkModeMatch) {
+        const value = darkModeMatch[1].toLowerCase();
+        const validTrueValues = ['on', 'true', '1', 'yes'];
+        const validFalseValues = ['off', 'false', '0', 'no'];
+        
+        if (validTrueValues.includes(value) && !isDarkMode) {
+          // Turn dark mode on
+          isDarkMode = true;
+          win.webContents.send('toggle-dark-mode', isDarkMode);
+          // Update the menu item's checked state
+          const menuItem = Menu.getApplicationMenu().getMenuItemById('dark-mode');
+          if (menuItem) {
+            menuItem.checked = isDarkMode;
+          }
+        } else if ((validFalseValues.includes(value) || !validTrueValues.includes(value)) && isDarkMode) {
+          // Turn dark mode off if value is explicitly false OR is an invalid value
+          isDarkMode = false;
+          win.webContents.send('toggle-dark-mode', isDarkMode);
+          // Update the menu item's checked state
+          const menuItem = Menu.getApplicationMenu().getMenuItemById('dark-mode');
+          if (menuItem) {
+            menuItem.checked = isDarkMode;
+          }
+        }
+      }
+      
+      // Return the path without writing to disk (it's a virtual note)
+      return path;
+    }
+    
+    // Original code for regular notes
     console.log(`Saving to ${path} with content:`, content);
     await fs.promises.writeFile(path, content);
     console.log('Save successful');
@@ -294,8 +334,28 @@ function getKeyboardShortcutsNote() {
   };
 }
 
+function getSettingsNote(isDarkModeEnabled) {
+  const content = `# Settings [System]
+
+Dark Mode: ${isDarkModeEnabled ? 'on' : 'off'}
+
+- Accepted values for Dark Mode: on/off, true/false, 0/1, yes/no
+- Changes take effect immediately as you type
+- Toggle Dark Mode with ${process.platform === 'darwin' ? '⌃⌘K' : 'Ctrl+Alt+K'} or via View menu`;
+
+  return {
+    path: "system://settings",
+    title: "Settings",
+    content,
+    created: 0,
+    updated: 0,
+    isSystemNote: true,
+    isHidden: true
+  };
+}
+
 function readNotesDirectory(dir) {
-  if (!dir || !fs.existsSync(dir)) return [getKeyboardShortcutsNote()];
+  if (!dir || !fs.existsSync(dir)) return [getKeyboardShortcutsNote(), getSettingsNote(isDarkMode)];
   
   const notes = fs.readdirSync(dir)
     .filter(f => f.endsWith('.md') || f.endsWith('.txt'))
@@ -319,8 +379,8 @@ function readNotesDirectory(dir) {
     .filter(note => note !== null)
     .sort((a, b) => b.updated - a.updated);
   
-  // Add the keyboard shortcuts system note but don't show it in the main list
-  return [getKeyboardShortcutsNote(), ...notes];
+  // Add the keyboard shortcuts and settings system notes
+  return [getKeyboardShortcutsNote(), getSettingsNote(isDarkMode), ...notes];
 }
 
 function extractTitle(content, filename) {

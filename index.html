@@ -199,6 +199,7 @@
             @keydown.escape.prevent="focusSearchBar()"
             @keydown.meta.j.prevent="navigateNote('next')"
             @keydown.meta.k.prevent="navigateNote('previous')"
+            :readonly="selectedNoteId === 'system://keyboard-shortcuts'"
           ></textarea>
         </div>
       </div>
@@ -260,41 +261,44 @@
         async updateActiveNoteContent(value) {
           const note = this.notes.find(n => n.path === this.selectedNoteId);
           if (note) {
-            // Don't save system notes
-            if (note.isSystemNote) return;
-            
-            console.log('Updating note:', note.path, 'with content:', value);
-            // Immediate local update
+            // Update the note content in our local state 
             note.content = value;
             note.updated = Date.now();
             this.notes = [...this.notes];
             
-            // Immediate save without debounce
             try {
-              console.log('Saving note:', note.path);
+              // For system notes, we still want to send updates to the main process
+              // but they won't be saved to disk - they'll be processed as needed
+              console.log('Updating note:', note.path);
               await window.electronAPI.updateNote(note.path, value);
-              console.log('Save successful for:', note.path);
+              console.log('Update successful for:', note.path);
             } catch (error) {
-              console.error('Save error:', error);
+              console.error('Update error:', error);
             }
           }
         },
         
         selectNote(path) {
           this.selectedNoteId = path;
-          // Update activeNoteContent when selecting a note
           const note = this.notes.find(n => n.path === path);
           if (note) {
             this.activeNoteContent = note.content;
             
-            // Disable editing for system notes
+            // If we're in search mode, exit search mode
+            if (this.isSearching) {
+              this.isSearching = false;
+              this.searchResultIndex = 0;
+            }
+            
+            // Focus the editor after selecting a note
             this.$nextTick(() => {
-              if (note.isSystemNote && this.$refs.editor) {
-                this.$refs.editor.readOnly = true;
-                this.$refs.editor.classList.add('cursor-default');
-              } else if (this.$refs.editor) {
-                this.$refs.editor.readOnly = false;
-                this.$refs.editor.classList.remove('cursor-default');
+              if (this.$refs.editor) {
+                this.$refs.editor.focus();
+                
+                // For system notes that aren't settings, place cursor at beginning
+                if (this.isSystemNote(note) && note.path !== 'system://settings') {
+                  this.$refs.editor.setSelectionRange(0, 0);
+                }
               }
             });
           }
@@ -361,6 +365,11 @@
           window.electronAPI.onNavigateNote((direction) => {
             this.navigateNote(direction);
           });
+          
+          // Listen for settings note refresh events
+          window.electronAPI.onRefreshSettingsNote((isDarkMode) => {
+            this.refreshSettingsNote(isDarkMode);
+          });
         },
         
         async loadNotes() {
@@ -376,8 +385,8 @@
             this.isSearching = false;
             this.searchResultIndex = 0;
             
-            // Find the first non-hidden note to select
-            const firstVisibleNote = this.notes.find(note => !note.isHidden);
+            // Find the first non-system, non-hidden note to select
+            const firstVisibleNote = this.notes.find(note => !note.isSystemNote && !note.isHidden);
             
             // Force selection of first visible note with proper reactivity
             if (firstVisibleNote) {
@@ -633,6 +642,26 @@
         // Add a helper function to check if a note is a system note
         isSystemNote(note) {
           return note && note.isSystemNote === true;
+        },
+
+        refreshSettingsNote(isDarkMode) {
+          // Find the settings note
+          const settingsNote = this.notes.find(note => note.path === "system://settings");
+          if (settingsNote) {
+            // Update the content with the new dark mode state
+            settingsNote.content = `# Settings [System]
+
+Dark Mode: ${isDarkMode ? 'on' : 'off'}
+
+- Accepted values for Dark Mode: on/off, true/false, 0/1, yes/no
+- Changes take effect immediately as you type
+- Toggle Dark Mode with ${navigator.platform.includes('Mac') ? '⌃⌘K' : 'Ctrl+Alt+K'} or via View menu`;
+
+            // If the settings note is currently being viewed, update the editor content
+            if (this.selectedNoteId === "system://settings") {
+              this.activeNoteContent = settingsNote.content;
+            }
+          }
         }
       }
     }
