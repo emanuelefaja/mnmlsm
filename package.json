@@ -21,7 +21,8 @@
   "dependencies": {
     "chokidar": "^4.0.3",
     "electron-store": "^10.0.1",
-    "fs-extra": "^11.3.0"
+    "fs-extra": "^11.3.0",
+    "fuse.js": "^7.1.0"
   },
   "build": {
     "appId": "com.yourcompany.mnmlism",

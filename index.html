@@ -6,6 +6,7 @@
   <title>mnmlism</title>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="node_modules/fuse.js/dist/fuse.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -217,8 +218,8 @@
   </div>
 
   <script>
-    function app() {
-      return {
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('app', () => ({
         searchQuery: '',
         notes: [],
         notesDir: null,
@@ -239,6 +240,8 @@
         isSearching: false,
         sortField: 'updatedAt',
         sortDirection: 'desc',
+        searchMode: 'fuzzy',
+        fuseInstance: null,
         
         get filteredNotes() {
           // First filter out hidden system notes unless specifically searched for
@@ -259,6 +262,24 @@
           // Then apply the search filter to the visible notes
           if (!this.searchQuery) return visibleNotes;
           
+          console.log('Search mode:', this.searchMode);
+          console.log('Fuse instance exists:', !!this.fuseInstance);
+          
+          // Use fuzzy search if enabled and Fuse is initialized
+          if (this.searchMode === 'fuzzy' && this.fuseInstance) {
+            console.log('Using fuzzy search with query:', this.searchQuery);
+            const results = this.fuseInstance.search(this.searchQuery);
+            console.log('Fuzzy search results count:', results.length);
+            if (results.length > 0) {
+              console.log('First result score:', results[0].score);
+              console.log('First result title:', results[0].item.title);
+            }
+            // Return the matched items, preserving the original order of results
+            return results.map(result => result.item);
+          }
+          
+          console.log('Using precise search with query:', this.searchQuery);
+          // Otherwise use precise search (the original implementation)
           return visibleNotes.filter(note => 
             note.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
             note.content.toLowerCase().includes(this.searchQuery.toLowerCase())
@@ -379,9 +400,21 @@
           });
           
           // Listen for settings note refresh events
-          window.electronAPI.onRefreshSettingsNote((isDarkMode) => {
-            this.refreshSettingsNote(isDarkMode);
+          window.electronAPI.onRefreshSettingsNote((isDarkMode, searchMode) => {
+            this.darkMode = isDarkMode;
+            this.searchMode = searchMode;
+            this.initFuseSearch();
           });
+          
+          // Listen for search mode changes
+          window.electronAPI.onSearchModeChange((searchMode) => {
+            console.log('Search mode changed to:', searchMode);
+            this.searchMode = searchMode;
+            this.initFuseSearch();
+          });
+          
+          // Initialize Fuse.js
+          this.initFuseSearch();
         },
         
         async loadNotes() {
@@ -660,13 +693,16 @@
           // Find the settings note
           const settingsNote = this.notes.find(note => note.path === "system://settings");
           if (settingsNote) {
-            // Update the content with the new dark mode state
-            settingsNote.content = `# Settings [System]
+            // Update the content with the current dark mode and search mode state
+            settingsNote.content = `# Settings
+
+Changes take effect immediately as you type.
 
 Dark Mode: ${isDarkMode ? 'on' : 'off'}
+Search: ${this.searchMode}
 
 - Accepted values for Dark Mode: on/off, true/false, 0/1, yes/no
-- Changes take effect immediately as you type
+
 - Toggle Dark Mode with ${navigator.platform.includes('Mac') ? '⌃⌘K' : 'Ctrl+Alt+K'} or via View menu`;
 
             // If the settings note is currently being viewed, update the editor content
@@ -725,9 +761,29 @@ Dark Mode: ${isDarkMode ? 'on' : 'off'}
                 if (aValue > bValue) return this.sortDirection === 'asc' ? 1 : -1;
                 return 0;
             });
+        },
+        
+        initFuseSearch() {
+          console.log('Initializing Fuse.js search');
+          if (this.notes.length > 0) {
+            console.log('Notes available for Fuse:', this.notes.length);
+            const options = {
+              includeScore: true,
+              keys: ['title', 'content'],
+              threshold: 0.7 // Adjust this value to control fuzzy matching sensitivity
+            };
+            try {
+              this.fuseInstance = new Fuse(this.notes, options);
+              console.log('Fuse instance created successfully');
+            } catch (error) {
+              console.error('Error creating Fuse instance:', error);
+            }
+          } else {
+            console.log('No notes available for Fuse initialization');
+          }
         }
-      }
-    }
+      }))
+    })
   </script>
 </body>
 </html> 

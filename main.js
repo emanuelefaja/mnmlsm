@@ -216,8 +216,22 @@ ipcMain.handle('choose-notes-dir', async () => {
   return store.get('notesDir');
 });
 
-ipcMain.handle('get-notes', (_, dir) => {
-  return readNotesDirectory(dir);
+ipcMain.handle('get-notes', async (event, dir) => {
+  if (!dir || !fs.existsSync(dir)) return [getKeyboardShortcutsNote(), getSettingsNote(isDarkMode)];
+  
+  const notes = await readNotesDirectory(dir);
+  
+  // Find the settings note to determine the search mode
+  const settingsNote = notes.find(note => note.path === "system://settings");
+  const searchMode = settingsNote ? parseSearchMode(settingsNote.content) : 'fuzzy';
+  
+  console.log('Settings note found:', !!settingsNote);
+  console.log('Parsed search mode:', searchMode);
+  
+  // Send the search mode to the renderer
+  win.webContents.send('search-mode-changed', searchMode);
+  
+  return notes;
 });
 
 ipcMain.handle('update-note', async (_, path, content) => {
@@ -251,6 +265,10 @@ ipcMain.handle('update-note', async (_, path, content) => {
           }
         }
       }
+      
+      // Parse search mode setting
+      const searchMode = parseSearchMode(content);
+      win.webContents.send('search-mode-changed', searchMode);
       
       // Return the path without writing to disk (it's a virtual note)
       return path;
@@ -334,13 +352,16 @@ function getKeyboardShortcutsNote() {
   };
 }
 
-function getSettingsNote(isDarkModeEnabled) {
-  const content = `# Settings [System]
+function getSettingsNote(isDarkMode) {
+  const content = `# Settings
 
-Dark Mode: ${isDarkModeEnabled ? 'on' : 'off'}
+  - Changes take effect immediately as you type
+
+Dark Mode: ${isDarkMode ? 'on' : 'off'}
+Search: fuzzy
 
 - Accepted values for Dark Mode: on/off, true/false, 0/1, yes/no
-- Changes take effect immediately as you type
+
 - Toggle Dark Mode with ${process.platform === 'darwin' ? '⌃⌘K' : 'Ctrl+Alt+K'} or via View menu`;
 
   return {
@@ -352,6 +373,11 @@ Dark Mode: ${isDarkModeEnabled ? 'on' : 'off'}
     isSystemNote: true,
     isHidden: true
   };
+}
+
+function parseSearchMode(settingsContent) {
+  const searchMatch = settingsContent.match(/Search:\s*(precise|fuzzy)/i);
+  return searchMatch ? searchMatch[1].toLowerCase() : 'fuzzy';
 }
 
 function readNotesDirectory(dir) {
@@ -431,4 +457,20 @@ ipcMain.handle('get-path-info', (_, filePath) => {
     basename: path.basename(filePath),
     extname: path.extname(filePath)
   };
-}); 
+});
+
+// In the function that handles note updates, add logic to detect settings changes
+function handleNoteUpdate(notePath, content) {
+  // ... existing code ...
+  
+  // Check if this is the settings note
+  if (notePath === "system://settings") {
+    const isDarkMode = content.includes('Theme: dark');
+    const searchMode = parseSearchMode(content);
+    
+    // Notify the renderer about the settings change
+    win.webContents.send('refresh-settings-note', isDarkMode, searchMode);
+  }
+  
+  // ... existing code ...
+} 
