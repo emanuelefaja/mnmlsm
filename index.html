@@ -19,6 +19,16 @@
       user-select: none;
       -webkit-user-select: none;
     }
+    
+    /* Add this new style for system notes */
+    textarea[readonly] {
+      background-color: rgba(0, 0, 0, 0.03);
+      cursor: default;
+    }
+    
+    .dark textarea[readonly] {
+      background-color: rgba(255, 255, 255, 0.03);
+    }
   </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
@@ -106,11 +116,20 @@
                   
                   <!-- Show normal title when not renaming -->
                   <template x-if="!(isRenaming && renameNoteId === note.path)">
-                    <span 
-                      class="font-semibold text-black dark:text-white text-sm truncate" 
-                      x-text="note.title.replace(/_/g, ' ')"
-                      @dblclick.stop="startRename(note)"
-                    ></span>
+                    <div class="flex items-center">
+                      <span 
+                        class="font-semibold text-black dark:text-white text-sm truncate" 
+                        x-text="note.title.replace(/_/g, ' ')"
+                        @dblclick.stop="startRename(note)"
+                      ></span>
+                      <!-- System note indicator -->
+                      <span 
+                        x-show="isSystemNote(note)" 
+                        class="ml-1 px-1 text-xs bg-gray-200 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-400"
+                      >
+                        System
+                      </span>
+                    </div>
                   </template>
                 </div>
               </div>
@@ -146,9 +165,20 @@
                     }"
                     @click="selectNote(note.path)"
                   >
-                    <td class="py-2 pr-4 truncate max-w-[200px]" x-text="note.title"></td>
-                    <td class="py-2 pr-4 text-gray-500 dark:text-gray-400" x-text="new Date(note.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(note.created).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })"></td>
-                    <td class="py-2 text-gray-500 dark:text-gray-400" x-text="new Date(note.updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(note.updated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })"></td>
+                    <td class="py-2 pr-4 truncate max-w-[200px]">
+                      <div class="flex items-center">
+                        <span x-text="note.title.replace(/_/g, ' ')"></span>
+                        <!-- System note indicator -->
+                        <span 
+                          x-show="isSystemNote(note)" 
+                          class="ml-1 px-1 text-xs bg-gray-200 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-400"
+                        >
+                          System
+                        </span>
+                      </div>
+                    </td>
+                    <td class="py-2 pr-4 text-gray-500 dark:text-gray-400" x-text="note.created === 0 ? 'System' : new Date(note.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(note.created).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })"></td>
+                    <td class="py-2 text-gray-500 dark:text-gray-400" x-text="note.updated === 0 ? 'System' : new Date(note.updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(note.updated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })"></td>
                   </tr>
                 </template>
               </tbody>
@@ -198,10 +228,28 @@
         isSearching: false,
         
         get filteredNotes() {
-          return this.notes.filter(note => 
+          // First filter out hidden system notes unless specifically searched for
+          const visibleNotes = this.notes.filter(note => {
+            // Show regular notes
+            if (!note.isSystemNote || !note.isHidden) return true;
+            
+            // Show hidden system notes only when searched for and the search matches
+            if (note.isHidden && this.searchQuery) {
+              return note.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+                     note.content.toLowerCase().includes(this.searchQuery.toLowerCase());
+            }
+            
+            // Hide by default
+            return false;
+          });
+          
+          // Then apply the search filter to the visible notes
+          if (!this.searchQuery) return visibleNotes;
+          
+          return visibleNotes.filter(note => 
             note.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
             note.content.toLowerCase().includes(this.searchQuery.toLowerCase())
-          )
+          );
         },
         
         getActiveNoteContent() {
@@ -210,9 +258,12 @@
         },
         
         async updateActiveNoteContent(value) {
-          const note = this.notes.find(n => n.path === this.selectedNoteId)
+          const note = this.notes.find(n => n.path === this.selectedNoteId);
           if (note) {
-            console.log('Updating note:', note.path, 'with content:', value)
+            // Don't save system notes
+            if (note.isSystemNote) return;
+            
+            console.log('Updating note:', note.path, 'with content:', value);
             // Immediate local update
             note.content = value;
             note.updated = Date.now();
@@ -220,11 +271,11 @@
             
             // Immediate save without debounce
             try {
-              console.log('Saving note:', note.path)
-              await window.electronAPI.updateNote(note.path, value)
-              console.log('Save successful for:', note.path)
+              console.log('Saving note:', note.path);
+              await window.electronAPI.updateNote(note.path, value);
+              console.log('Save successful for:', note.path);
             } catch (error) {
-              console.error('Save error:', error)
+              console.error('Save error:', error);
             }
           }
         },
@@ -235,6 +286,17 @@
           const note = this.notes.find(n => n.path === path);
           if (note) {
             this.activeNoteContent = note.content;
+            
+            // Disable editing for system notes
+            this.$nextTick(() => {
+              if (note.isSystemNote && this.$refs.editor) {
+                this.$refs.editor.readOnly = true;
+                this.$refs.editor.classList.add('cursor-default');
+              } else if (this.$refs.editor) {
+                this.$refs.editor.readOnly = false;
+                this.$refs.editor.classList.remove('cursor-default');
+              }
+            });
           }
         },
         
@@ -309,11 +371,14 @@
             this.isSearching = false;
             this.searchResultIndex = 0;
             
-            // Force selection of first note with proper reactivity
-            if (this.notes.length > 0) {
-              this.selectedNoteId = this.notes[0].path;
+            // Find the first non-hidden note to select
+            const firstVisibleNote = this.notes.find(note => !note.isHidden);
+            
+            // Force selection of first visible note with proper reactivity
+            if (firstVisibleNote) {
+              this.selectedNoteId = firstVisibleNote.path;
               // Set activeNoteContent directly
-              this.activeNoteContent = this.notes[0].content;
+              this.activeNoteContent = firstVisibleNote.content;
             }
           } catch (error) {
             console.error('Error loading notes:', error);
@@ -378,6 +443,9 @@
         },
 
         startRename(note) {
+          // Prevent renaming system notes
+          if (note.isSystemNote) return;
+          
           this.isRenaming = true;
           this.renameNoteId = note.path;
           this.renameValue = note.title.replace(/_/g, ' ');
@@ -529,21 +597,25 @@
         navigateNote(direction) {
           if (!this.notes.length) return;
           
-          // Get the current index of the selected note
-          const currentIndex = this.notes.findIndex(note => note.path === this.selectedNoteId);
+          // Get visible notes (non-hidden notes)
+          const visibleNotes = this.notes.filter(note => !note.isHidden);
+          if (!visibleNotes.length) return;
+          
+          // Get the current index of the selected note in the visible notes array
+          const currentIndex = visibleNotes.findIndex(note => note.path === this.selectedNoteId);
           if (currentIndex === -1) return;
           
           let newIndex;
           if (direction === 'next') {
             // Move to the next note, or wrap to the first note
-            newIndex = (currentIndex + 1) % this.notes.length;
+            newIndex = (currentIndex + 1) % visibleNotes.length;
           } else if (direction === 'previous') {
             // Move to the previous note, or wrap to the last note
-            newIndex = (currentIndex - 1 + this.notes.length) % this.notes.length;
+            newIndex = (currentIndex - 1 + visibleNotes.length) % visibleNotes.length;
           }
           
           // Select the new note
-          this.selectNote(this.notes[newIndex].path);
+          this.selectNote(visibleNotes[newIndex].path);
           
           // Focus the editor after changing notes
           this.$nextTick(() => {
@@ -551,6 +623,11 @@
               this.$refs.editor.focus();
             }
           });
+        },
+
+        // Add a helper function to check if a note is a system note
+        isSystemNote(note) {
+          return note && note.isSystemNote === true;
         }
       }
     }

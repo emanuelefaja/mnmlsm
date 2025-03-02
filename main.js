@@ -250,10 +250,54 @@ ipcMain.handle('create-note', async (_, fullPath, content) => {
   }
 });
 
-function readNotesDirectory(dir) {
-  if (!dir || !fs.existsSync(dir)) return [];
+function getKeyboardShortcutsNote() {
+  // Determine if we're on macOS
+  const isMac = process.platform === 'darwin';
   
-  return fs.readdirSync(dir)
+  // Define shortcuts with platform-specific formatting
+  let shortcuts;
+  
+  if (isMac) {
+    // macOS shortcuts with symbols
+    shortcuts = [
+      "New Note: ⌘N",
+      "Focus Search: ⌘L",
+      "Next Note: ⌘J",
+      "Previous Note: ⌘K",
+      "Toggle Dark Mode: ⌃⌘K",
+      "Escape to Focus Search: Esc (when in editor)",
+      "Clear Search: Esc (when in search)",
+    ];
+  } else {
+    // Windows/Linux shortcuts
+    shortcuts = [
+      "New Note: Ctrl+N",
+      "Focus Search: Ctrl+L",
+      "Next Note: Ctrl+J",
+      "Previous Note: Ctrl+K",
+      "Toggle Dark Mode: Ctrl+Alt+K",
+      "Escape to Focus Search: Esc (when in editor)",
+      "Clear Search: Esc (when in search)",
+    ];
+  }
+
+  const content = `# Keyboard Shortcuts [System]\n\n${shortcuts.join("\n")}`;
+  
+  return {
+    path: "system://keyboard-shortcuts",
+    title: "Keyboard Shortcuts",
+    content,
+    created: 0,
+    updated: 0,
+    isSystemNote: true,
+    isHidden: true
+  };
+}
+
+function readNotesDirectory(dir) {
+  if (!dir || !fs.existsSync(dir)) return [getKeyboardShortcutsNote()];
+  
+  const notes = fs.readdirSync(dir)
     .filter(f => f.endsWith('.md') || f.endsWith('.txt'))
     .map(f => {
       const filePath = path.join(dir, f)
@@ -273,7 +317,10 @@ function readNotesDirectory(dir) {
       }
     })
     .filter(note => note !== null)
-    .sort((a, b) => b.updated - a.updated)
+    .sort((a, b) => b.updated - a.updated);
+  
+  // Add the keyboard shortcuts system note but don't show it in the main list
+  return [getKeyboardShortcutsNote(), ...notes];
 }
 
 function extractTitle(content, filename) {
