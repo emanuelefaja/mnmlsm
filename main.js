@@ -69,6 +69,11 @@ const createWindow = () => {
           accelerator: 'CmdOrCtrl+K',
           click: () => win.webContents.send('navigate-note', 'previous')
         },
+        {
+          label: 'Delete Note',
+          accelerator: process.platform === 'darwin' ? 'Cmd+Backspace' : 'Ctrl+Delete',
+          click: () => win.webContents.send('delete-note')
+        },
         { type: 'separator' },
         { role: 'close' }
       ]
@@ -473,4 +478,24 @@ function handleNoteUpdate(notePath, content) {
   }
   
   // ... existing code ...
-} 
+}
+
+// Add this handler for deleting notes
+ipcMain.handle('delete-note', async (event, filePath) => {
+  try {
+    // Don't allow deleting system notes
+    if (filePath.includes('SYSTEM_NOTE')) {
+      return { success: false, error: 'Cannot delete system notes' };
+    }
+    
+    await fs.promises.unlink(filePath);
+    
+    // Notify the renderer that notes have been updated
+    win.webContents.send('notes-updated');
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting note:', error);
+    return { success: false, error: error.message };
+  }
+}); 

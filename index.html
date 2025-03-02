@@ -210,8 +210,40 @@
             @keydown.escape.prevent="focusSearchBar()"
             @keydown.meta.j.prevent="navigateNote('next')"
             @keydown.meta.k.prevent="navigateNote('previous')"
+            @keydown.meta.backspace.prevent="openDeleteModal()"
+            @keydown.ctrl.delete.prevent="openDeleteModal()"
             :readonly="selectedNoteId === 'system://keyboard-shortcuts'"
           ></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Update the delete confirmation modal -->
+    <div 
+      x-show="showDeleteModal" 
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      @keydown.escape.window.prevent="showDeleteModal = false"
+      @keydown.enter.window.prevent="confirmDelete()"
+    >
+      <div 
+        class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 max-w-md mx-auto"
+        @click.outside="showDeleteModal = false"
+      >
+        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Delete Note</h3>
+        <p class="text-gray-700 dark:text-gray-300 mb-6">Are you sure you want to delete this note?</p>
+        <div class="flex justify-end space-x-4">
+          <button 
+            @click="showDeleteModal = false" 
+            class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            Cancel ⎋
+          </button>
+          <button 
+            @click="confirmDelete()" 
+            class="px-4 py-2 bg-[#e3211a] text-white rounded-md hover:bg-red-700"
+          >
+            Delete ↵
+          </button>
         </div>
       </div>
     </div>
@@ -242,6 +274,7 @@
         sortDirection: 'desc',
         searchMode: 'fuzzy',
         fuseInstance: null,
+        showDeleteModal: false,
         
         get filteredNotes() {
           // First filter out hidden system notes unless specifically searched for
@@ -262,23 +295,13 @@
           // Then apply the search filter to the visible notes
           if (!this.searchQuery) return visibleNotes;
           
-          console.log('Search mode:', this.searchMode);
-          console.log('Fuse instance exists:', !!this.fuseInstance);
-          
           // Use fuzzy search if enabled and Fuse is initialized
           if (this.searchMode === 'fuzzy' && this.fuseInstance) {
-            console.log('Using fuzzy search with query:', this.searchQuery);
             const results = this.fuseInstance.search(this.searchQuery);
-            console.log('Fuzzy search results count:', results.length);
-            if (results.length > 0) {
-              console.log('First result score:', results[0].score);
-              console.log('First result title:', results[0].item.title);
-            }
             // Return the matched items, preserving the original order of results
             return results.map(result => result.item);
           }
           
-          console.log('Using precise search with query:', this.searchQuery);
           // Otherwise use precise search (the original implementation)
           return visibleNotes.filter(note => 
             note.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
@@ -297,6 +320,8 @@
             // Update the note content in our local state 
             note.content = value;
             note.updated = Date.now();
+            
+            // Force reactivity by creating a new array
             this.notes = [...this.notes];
             
             try {
@@ -312,10 +337,13 @@
         },
         
         selectNote(path) {
+          console.log('Selecting note:', path);
           this.selectedNoteId = path;
           const note = this.notes.find(n => n.path === path);
           if (note) {
-            this.activeNoteContent = note.content;
+            console.log('Note found, content:', note.content ? note.content.substring(0, 50) + '...' : 'empty');
+            // Make sure we're setting the content correctly
+            this.activeNoteContent = note.content || '';
             
             // If we're in search mode, exit search mode
             if (this.isSearching) {
@@ -334,6 +362,8 @@
                 }
               }
             });
+          } else {
+            console.log('Note not found for path:', path);
           }
         },
         
@@ -411,6 +441,11 @@
             console.log('Search mode changed to:', searchMode);
             this.searchMode = searchMode;
             this.initFuseSearch();
+          });
+          
+          // Listen for delete note event
+          window.electronAPI.onDeleteNote(() => {
+            this.openDeleteModal();
           });
           
           // Initialize Fuse.js
@@ -764,9 +799,7 @@ Search: ${this.searchMode}
         },
         
         initFuseSearch() {
-          console.log('Initializing Fuse.js search');
           if (this.notes.length > 0) {
-            console.log('Notes available for Fuse:', this.notes.length);
             const options = {
               includeScore: true,
               keys: ['title', 'content'],
@@ -774,13 +807,44 @@ Search: ${this.searchMode}
             };
             try {
               this.fuseInstance = new Fuse(this.notes, options);
-              console.log('Fuse instance created successfully');
             } catch (error) {
               console.error('Error creating Fuse instance:', error);
             }
-          } else {
-            console.log('No notes available for Fuse initialization');
           }
+        },
+
+        async confirmDelete() {
+          if (!this.selectedNoteId) return;
+          
+          try {
+            await window.electronAPI.deleteNote(this.selectedNoteId);
+            
+            // Close the modal first
+            this.showDeleteModal = false;
+            
+            // Then clear the selection and content
+            this.selectedNoteId = null;
+            this.activeNoteContent = '';
+            
+            // Finally reload notes
+            await this.loadNotes();
+          } catch (error) {
+            console.error('Error deleting note:', error);
+            alert(`Error deleting note: ${error.message}`);
+            // Close the modal even on error
+            this.showDeleteModal = false;
+          }
+        },
+
+        openDeleteModal() {
+          // Don't allow deleting system notes
+          const note = this.notes.find(n => n.path === this.selectedNoteId);
+          if (note && note.isSystemNote) return;
+          
+          // Don't show delete modal if no note is selected
+          if (!this.selectedNoteId) return;
+          
+          this.showDeleteModal = true;
         }
       }))
     })
