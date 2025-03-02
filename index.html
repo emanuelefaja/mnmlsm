@@ -31,6 +31,8 @@
         class="w-full h-full pl-4 pr-0 py-0 rounded-none border-transparent focus:outline-none focus:border-transparent text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
         x-model="searchQuery"
         @keydown.enter.prevent="handleSearchEnter"
+        @keydown="handleSearchKeydown"
+        @input="searchResultIndex = 0; isSearching = searchQuery.length > 0; if(isSearching && filteredNotes.length > 0) previewSearchResult()"
       >
       <div class="flex items-center pr-2 space-x-2">
         <!-- Sidebar view toggle -->
@@ -76,11 +78,14 @@
           <div x-show="!notes.length" class="p-4 text-gray-400 dark:text-gray-500 text-sm">
             Loading notes...
           </div>
-          <div class="space-y-2">
+          <div class="space-y-1">
             <template x-for="note in filteredNotes" :key="note.path">
               <div 
-                class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded group text-gray-900 dark:text-gray-100"
-                :class="{ 'bg-blue-50 dark:bg-blue-900/30': note.path === selectedNoteId }"
+                class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded group text-gray-900 dark:text-gray-100"
+                :class="{ 
+                  'bg-blue-50 dark:bg-blue-900/30': note.path === selectedNoteId,
+                  'bg-yellow-50 dark:bg-yellow-900/30': isSearching && filteredNotes[searchResultIndex]?.path === note.path
+                }"
                 @click="selectNote(note.path)"
               >
                 <div class="flex flex-col min-w-0">
@@ -133,7 +138,10 @@
                 <template x-for="note in filteredNotes" :key="note.path">
                   <tr 
                     class="hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-                    :class="{ 'bg-blue-50 dark:bg-blue-900/30': note.path === selectedNoteId }"
+                    :class="{ 
+                      'bg-blue-50 dark:bg-blue-900/30': note.path === selectedNoteId,
+                      'bg-yellow-50 dark:bg-yellow-900/30': isSearching && filteredNotes[searchResultIndex]?.path === note.path
+                    }"
                     @click="selectNote(note.path)"
                   >
                     <td class="py-2 pr-4 truncate max-w-[200px]" x-text="note.title"></td>
@@ -182,6 +190,8 @@
         renameNoteId: null,
         renameValue: '',
         darkMode: false,
+        searchResultIndex: 0,
+        isSearching: false,
         
         get filteredNotes() {
           return this.notes.filter(note => 
@@ -281,6 +291,10 @@
               content: String(note.content || '')
             }));
             
+            // Reset search state
+            this.isSearching = false;
+            this.searchResultIndex = 0;
+            
             // Force selection of first note with proper reactivity
             if (this.notes.length > 0) {
               this.selectedNoteId = this.notes[0].path;
@@ -293,12 +307,22 @@
           }
         },
         
-        async handleSearchEnter(e) {
+        handleSearchEnter(e) {
           const hasModifier = e.metaKey || e.ctrlKey;
           const shouldCreateNew = this.filteredNotes.length === 0;
           
-          if ((shouldCreateNew && !hasModifier) || hasModifier) {
-            await this.createNote();
+          if (this.isSearching && this.filteredNotes.length > 0 && !hasModifier) {
+            // Select the currently highlighted search result
+            this.selectNote(this.filteredNotes[this.searchResultIndex].path);
+            this.isSearching = false;
+            this.searchQuery = '';
+            
+            // Focus the editor
+            this.$nextTick(() => {
+              this.$refs.editor.focus();
+            });
+          } else if ((shouldCreateNew && !hasModifier) || hasModifier) {
+            this.createNote();
           }
         },
 
@@ -432,6 +456,47 @@
           const searchInput = document.querySelector('input[x-model="searchQuery"]');
           if (searchInput) {
             searchInput.focus();
+          }
+        },
+
+        handleSearchKeydown(e) {
+          if (this.searchQuery && this.filteredNotes.length > 0) {
+            this.isSearching = true;
+            
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              this.searchResultIndex = Math.min(this.searchResultIndex + 1, this.filteredNotes.length - 1);
+              this.previewSearchResult();
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              this.searchResultIndex = Math.max(this.searchResultIndex - 1, 0);
+              this.previewSearchResult();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              this.clearSearch();
+            }
+          }
+        },
+
+        previewSearchResult() {
+          if (this.isSearching && this.filteredNotes.length > 0) {
+            const note = this.filteredNotes[this.searchResultIndex];
+            this.activeNoteContent = note.content;
+            // Don't set selectedNoteId yet - just preview the content
+          }
+        },
+
+        clearSearch() {
+          this.searchQuery = '';
+          this.isSearching = false;
+          this.searchResultIndex = 0;
+          
+          // Restore the previously selected note content if available
+          if (this.selectedNoteId) {
+            const note = this.notes.find(n => n.path === this.selectedNoteId);
+            if (note) {
+              this.activeNoteContent = note.content;
+            }
           }
         }
       }
