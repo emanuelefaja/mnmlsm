@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPathInfo: (filePath) => ipcRenderer.invoke('get-path-info', filePath),
   onDarkModeToggle: (callback) => ipcRenderer.on('toggle-dark-mode', (_, isDarkMode) => callback(isDarkMode)),
   onFocusSearch: (callback) => ipcRenderer.on('focus-search', callback),
+  onNavigateNote: (callback) => ipcRenderer.on('navigate-note', (_, direction) => callback(direction)),
 })
 
 window.testAPI = {

@@ -167,6 +167,8 @@
             @keydown.ctrl.s.prevent
             @keydown.meta.s.prevent
             @keydown.escape.prevent="focusSearchBar()"
+            @keydown.meta.j.prevent="navigateNote('next')"
+            @keydown.meta.k.prevent="navigateNote('previous')"
           ></textarea>
         </div>
       </div>
@@ -286,6 +288,11 @@
           // Listen for focus search event
           window.electronAPI.onFocusSearch(() => {
             this.focusSearchBar();
+          });
+          
+          // Listen for note navigation events
+          window.electronAPI.onNavigateNote((direction) => {
+            this.navigateNote(direction);
           });
         },
         
@@ -515,6 +522,33 @@
             const searchInput = document.querySelector('input[x-model="searchQuery"]');
             if (searchInput) {
               searchInput.focus();
+            }
+          });
+        },
+
+        navigateNote(direction) {
+          if (!this.notes.length) return;
+          
+          // Get the current index of the selected note
+          const currentIndex = this.notes.findIndex(note => note.path === this.selectedNoteId);
+          if (currentIndex === -1) return;
+          
+          let newIndex;
+          if (direction === 'next') {
+            // Move to the next note, or wrap to the first note
+            newIndex = (currentIndex + 1) % this.notes.length;
+          } else if (direction === 'previous') {
+            // Move to the previous note, or wrap to the last note
+            newIndex = (currentIndex - 1 + this.notes.length) % this.notes.length;
+          }
+          
+          // Select the new note
+          this.selectNote(this.notes[newIndex].path);
+          
+          // Focus the editor after changing notes
+          this.$nextTick(() => {
+            if (this.$refs.editor) {
+              this.$refs.editor.focus();
             }
           });
         }
