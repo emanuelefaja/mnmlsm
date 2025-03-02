@@ -91,7 +91,7 @@
             Loading notes...
           </div>
           <div class="space-y-1">
-            <template x-for="note in filteredNotes" :key="note.path">
+            <template x-for="note in sortedNotes()" :key="note.path">
               <div 
                 class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded group text-gray-900 dark:text-gray-100"
                 :class="{ 
@@ -147,16 +147,26 @@
           style="max-height: 240px"
         >
           <div class="p-4">
+            <div class="flex text-xs text-gray-500 border-b border-gray-200 pb-1">
+                <div class="w-1/3 cursor-pointer" @click="sort('title')">
+                    Name
+                    <span x-show="sortField === 'title' && sortDirection === 'asc'">▲</span>
+                    <span x-show="sortField === 'title' && sortDirection === 'desc'">▼</span>
+                </div>
+                <div class="w-1/3 cursor-pointer" @click="sort('created')">
+                    Created
+                    <span x-show="sortField === 'created' && sortDirection === 'asc'">▲</span>
+                    <span x-show="sortField === 'created' && sortDirection === 'desc'">▼</span>
+                </div>
+                <div class="w-1/3 cursor-pointer" @click="sort('updated')">
+                    Updated
+                    <span x-show="sortField === 'updated' && sortDirection === 'asc'">▲</span>
+                    <span x-show="sortField === 'updated' && sortDirection === 'desc'">▼</span>
+                </div>
+            </div>
             <table class="w-full table-auto text-sm text-gray-900 dark:text-gray-100">
-              <thead class="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                <tr>
-                  <th class="text-left pb-2">Name</th>
-                  <th class="text-left pb-2">Created</th>
-                  <th class="text-left pb-2">Updated</th>
-                </tr>
-              </thead>
               <tbody>
-                <template x-for="note in filteredNotes" :key="note.path">
+                <template x-for="note in sortedNotes()" :key="note.path">
                   <tr 
                     class="hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
                     :class="{ 
@@ -165,7 +175,7 @@
                     }"
                     @click="selectNote(note.path)"
                   >
-                    <td class="py-2 pr-4 truncate max-w-[200px]">
+                    <td class="py-2 pr-4 w-1/3 truncate">
                       <div class="flex items-center">
                         <span x-text="note.title.replace(/_/g, ' ')"></span>
                         <!-- System note indicator -->
@@ -177,8 +187,8 @@
                         </span>
                       </div>
                     </td>
-                    <td class="py-2 pr-4 text-gray-500 dark:text-gray-400" x-text="note.created === 0 ? 'System' : new Date(note.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(note.created).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })"></td>
-                    <td class="py-2 text-gray-500 dark:text-gray-400" x-text="note.updated === 0 ? 'System' : new Date(note.updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(note.updated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })"></td>
+                    <td class="py-2 pr-4 w-1/3 text-gray-500 dark:text-gray-400" x-text="note.created === 0 ? 'System' : new Date(note.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(note.created).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })"></td>
+                    <td class="py-2 w-1/3 text-gray-500 dark:text-gray-400" x-text="note.updated === 0 ? 'System' : new Date(note.updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(note.updated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })"></td>
                   </tr>
                 </template>
               </tbody>
@@ -227,6 +237,8 @@
         darkMode: false,
         searchResultIndex: 0,
         isSearching: false,
+        sortField: 'updatedAt',
+        sortDirection: 'desc',
         
         get filteredNotes() {
           // First filter out hidden system notes unless specifically searched for
@@ -662,6 +674,57 @@ Dark Mode: ${isDarkMode ? 'on' : 'off'}
               this.activeNoteContent = settingsNote.content;
             }
           }
+        },
+
+        sort(field) {
+            if (this.sortField === field) {
+                // Toggle direction or reset
+                if (field === 'title') {
+                    // For name: A-Z, Z-A, unsorted
+                    if (this.sortDirection === 'asc') {
+                        this.sortDirection = 'desc';
+                    } else if (this.sortDirection === 'desc') {
+                        this.sortField = null;
+                        this.sortDirection = null;
+                    } else {
+                        this.sortDirection = 'asc';
+                    }
+                } else {
+                    // For dates: reverse chrono, chrono, unsorted
+                    if (this.sortDirection === 'desc') {
+                        this.sortDirection = 'asc';
+                    } else if (this.sortDirection === 'asc') {
+                        this.sortField = null;
+                        this.sortDirection = null;
+                    } else {
+                        this.sortDirection = 'desc';
+                    }
+                }
+            } else {
+                // New field selected
+                this.sortField = field;
+                // Default direction based on field type
+                this.sortDirection = field === 'title' ? 'asc' : 'desc';
+            }
+        },
+        
+        sortedNotes() {
+            if (!this.sortField) return this.filteredNotes;
+            
+            return [...this.filteredNotes].sort((a, b) => {
+                let aValue = a[this.sortField];
+                let bValue = b[this.sortField];
+                
+                if (this.sortField === 'title') {
+                    // Case-insensitive string comparison for names
+                    aValue = String(aValue || '').toLowerCase();
+                    bValue = String(bValue || '').toLowerCase();
+                }
+                
+                if (aValue < bValue) return this.sortDirection === 'asc' ? -1 : 1;
+                if (aValue > bValue) return this.sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
         }
       }
     }
