@@ -330,6 +330,11 @@
           try {
             this.notesDir = await window.electronAPI.chooseNotesDirectory();
             await this.loadNotes();
+            
+            // Focus the search input after loading notes
+            this.$nextTick(() => {
+              this.focusSearchBar();
+            });
           } catch (error) {
             console.error('Error initializing notes:', error);
           }
