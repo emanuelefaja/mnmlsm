@@ -156,6 +156,7 @@
             x-ref="editor"
             @keydown.ctrl.s.prevent
             @keydown.meta.s.prevent
+            @keydown.escape.prevent="focusSearchBar()"
           ></textarea>
         </div>
       </div>
@@ -423,6 +424,14 @@
           } catch (error) {
             console.error('Error renaming note:', error);
             alert(`Error renaming note: ${error.message}`);
+          }
+        },
+
+        focusSearchBar() {
+          // Find the search input and focus it
+          const searchInput = document.querySelector('input[x-model="searchQuery"]');
+          if (searchInput) {
+            searchInput.focus();
           }
         }
       }
