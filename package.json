@@ -5,7 +5,9 @@
   "scripts": {
     "start": "electron .",
     "build": "mkdir -p dist && cp index.html preload.js dist/",
-    "install-deps": "npm install electron fs-extra"
+    "install-deps": "npm install electron fs-extra",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
   },
   "keywords": [],
   "author": "",
@@ -13,11 +15,28 @@
   "description": "",
   "devDependencies": {
     "electron": "^34.3.0",
+    "electron-builder": "^25.1.8",
     "electron-reloader": "^1.2.3"
   },
   "dependencies": {
     "chokidar": "^4.0.3",
     "electron-store": "^10.0.1",
     "fs-extra": "^11.3.0"
+  },
+  "build": {
+    "appId": "com.yourcompany.mnmlism",
+    "productName": "mnmlism",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg",
+      "icon": "build/icon.icns"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/*"
+    ],
+    "directories": {
+      "output": "release-builds"
+    }
   }
 }

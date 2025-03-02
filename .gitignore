@@ -1,3 +1,5 @@
 .cursorrules
 .DS_Store
 /node_modules
+plan.md
+/release-builds
