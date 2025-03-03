@@ -42,6 +42,8 @@
         class="w-full h-full pl-4 pr-0 py-0 rounded-none border-transparent focus:outline-none focus:border-transparent text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
         x-model="searchQuery"
         @keydown.enter.prevent="handleSearchEnter"
+        @keydown.meta.n.prevent="createNote"
+        @keydown.ctrl.n.prevent="createNote"
         @keydown="handleSearchKeydown"
         @input="searchResultIndex = 0; isSearching = searchQuery.length > 0; if(isSearching && filteredNotes.length > 0) previewSearchResult()"
       >
