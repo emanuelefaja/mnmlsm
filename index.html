@@ -48,7 +48,7 @@
       <div class="flex items-center pr-2 space-x-2">
         <!-- Sidebar view toggle -->
         <button 
-          class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300"
+          class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400"
           :class="{ 'bg-gray-100 dark:bg-gray-700': showSidebar }"
           @click="showSidebar = !showSidebar; showNotesAbove = false"
         >
@@ -60,7 +60,7 @@
 
         <!-- Table view toggle -->
         <button 
-          class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300"
+          class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400"
           :class="{ 'bg-gray-100 dark:bg-gray-700': showNotesAbove }"
           @click="showNotesAbove = !showNotesAbove; showSidebar = false"
         >
@@ -204,6 +204,7 @@
             placeholder="Start typing..."
             x-model="activeNoteContent"
             @input="updateActiveNoteContent($event.target.value)"
+            @keydown.enter="handleEnterKey($event)"
             x-ref="editor"
             @keydown.ctrl.s.prevent
             @keydown.meta.s.prevent
@@ -212,6 +213,8 @@
             @keydown.meta.k.prevent="navigateNote('previous')"
             @keydown.meta.backspace.prevent="openDeleteModal()"
             @keydown.ctrl.delete.prevent="openDeleteModal()"
+            @keydown.meta.r.prevent="renameCurrentNote()"
+            @keydown.ctrl.r.prevent="renameCurrentNote()"
             :readonly="selectedNoteId === 'system://keyboard-shortcuts'"
           ></textarea>
         </div>
@@ -222,8 +225,8 @@
     <div 
       x-show="showDeleteModal" 
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-      @keydown.escape.window.prevent="showDeleteModal = false"
-      @keydown.enter.window.prevent="confirmDelete()"
+      @keydown.escape.prevent="showDeleteModal = false"
+      @keydown.enter.prevent="confirmDelete()"
     >
       <div 
         class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 max-w-md mx-auto"
@@ -317,6 +320,16 @@
         async updateActiveNoteContent(value) {
           const note = this.notes.find(n => n.path === this.selectedNoteId);
           if (note) {
+            // SAFEGUARD: Don't update with empty content unless the note was already empty
+            if (value === '' && note.content && note.content.length > 0) {
+              console.warn('Prevented possible content deletion - empty value received');
+              console.log('Previous content length:', note.content.length);
+              return;
+            }
+
+            // Log content lengths for debugging
+            console.log('Updating note content - New length:', value.length, 'Previous length:', note.content ? note.content.length : 0);
+            
             // Update the note content in our local state 
             note.content = value;
             note.updated = Date.now();
@@ -325,8 +338,6 @@
             this.notes = [...this.notes];
             
             try {
-              // For system notes, we still want to send updates to the main process
-              // but they won't be saved to disk - they'll be processed as needed
               console.log('Updating note:', note.path);
               await window.electronAPI.updateNote(note.path, value);
               console.log('Update successful for:', note.path);
@@ -446,6 +457,14 @@
           // Listen for delete note event
           window.electronAPI.onDeleteNote(() => {
             this.openDeleteModal();
+          });
+          
+          // Listen for rename note event
+          window.electronAPI.onRenameNote(() => {
+            const note = this.notes.find(n => n.path === this.selectedNoteId);
+            if (note && !note.isSystemNote) {
+              this.renameCurrentNote();
+            }
           });
           
           // Initialize Fuse.js
@@ -803,7 +822,7 @@ Search: ${this.searchMode}
             const options = {
               includeScore: true,
               keys: ['title', 'content'],
-              threshold: 0.7 // Adjust this value to control fuzzy matching sensitivity
+              threshold: 0.4 // Adjust this value to control fuzzy matching sensitivity
             };
             try {
               this.fuseInstance = new Fuse(this.notes, options);
@@ -845,6 +864,38 @@ Search: ${this.searchMode}
           if (!this.selectedNoteId) return;
           
           this.showDeleteModal = true;
+          
+          // Focus the modal after it opens
+          this.$nextTick(() => {
+            const deleteButton = document.querySelector('.bg-\\[\\#e3211a\\]');
+            if (deleteButton) deleteButton.focus();
+          });
+        },
+
+        handleEnterKey(event) {
+          // Don't prevent default - let the enter key work normally
+          // But log when it happens for debugging
+          console.log('Enter key pressed in editor');
+          
+          // Create a snapshot of the current content length
+          const currentLength = this.activeNoteContent?.length || 0;
+          
+          // After a short delay, check if the content length changed dramatically
+          setTimeout(() => {
+            const newLength = this.activeNoteContent?.length || 0;
+            if (newLength < currentLength * 0.5) { // If more than 50% of content disappeared
+              console.error('Content length decreased significantly after Enter key press');
+              console.log('Previous length:', currentLength, 'New length:', newLength);
+            }
+          }, 50);
+        },
+
+        renameCurrentNote() {
+          // Don't allow renaming system notes
+          const note = this.notes.find(n => n.path === this.selectedNoteId);
+          if (!note || note.isSystemNote) return;
+          
+          this.startRename(note);
         }
       }))
     })

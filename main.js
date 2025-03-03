@@ -18,6 +18,9 @@ let win;
 // Add this at the top level of the file, outside any functions
 let isDarkMode = false;
 
+// Add at the top level of main.js
+let currentSearchMode = 'fuzzy';
+
 const createWindow = () => {
   // Use the global win variable instead of local const
   win = new BrowserWindow({
@@ -88,7 +91,13 @@ const createWindow = () => {
         { role: 'copy' },
         { role: 'paste' },
         { role: 'delete' },
-        { role: 'selectAll' }
+        { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Rename Note',
+          accelerator: process.platform === 'darwin' ? 'Cmd+R' : 'Ctrl+R',
+          click: () => win.webContents.send('rename-note')
+        }
       ]
     },
     {
@@ -233,8 +242,12 @@ ipcMain.handle('get-notes', async (event, dir) => {
   console.log('Settings note found:', !!settingsNote);
   console.log('Parsed search mode:', searchMode);
   
-  // Send the search mode to the renderer
-  win.webContents.send('search-mode-changed', searchMode);
+  // Only send the event if the search mode has actually changed
+  if (searchMode !== currentSearchMode) {
+    console.log(`Search mode changed from ${currentSearchMode} to ${searchMode}`);
+    currentSearchMode = searchMode;
+    win.webContents.send('search-mode-changed', searchMode);
+  }
   
   return notes;
 });
@@ -272,8 +285,11 @@ ipcMain.handle('update-note', async (_, path, content) => {
       }
       
       // Parse search mode setting
-      const searchMode = parseSearchMode(content);
-      win.webContents.send('search-mode-changed', searchMode);
+      const newSearchMode = parseSearchMode(content);
+      if (newSearchMode !== currentSearchMode) {
+        currentSearchMode = newSearchMode;
+        win.webContents.send('search-mode-changed', newSearchMode);
+      }
       
       // Return the path without writing to disk (it's a virtual note)
       return path;
@@ -327,6 +343,8 @@ function getKeyboardShortcutsNote() {
       "Focus Search: ⌘L",
       "Next Note: ⌘J",
       "Previous Note: ⌘K",
+      "Rename Note: ⌘R",
+      "Delete Note: ⌘⌫",
       "Toggle Dark Mode: ⌃⌘K",
       "Escape to Focus Search: Esc (when in editor)",
       "Clear Search: Esc (when in search)",
@@ -338,6 +356,8 @@ function getKeyboardShortcutsNote() {
       "Focus Search: Ctrl+L",
       "Next Note: Ctrl+J",
       "Previous Note: Ctrl+K",
+      "Rename Note: Ctrl+R",
+      "Delete Note: Ctrl+Delete",
       "Toggle Dark Mode: Ctrl+Alt+K",
       "Escape to Focus Search: Esc (when in editor)",
       "Clear Search: Esc (when in search)",

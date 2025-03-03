@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRefreshSettingsNote: (callback) => ipcRenderer.on('refresh-settings-note', (_, isDarkMode, searchMode) => callback(isDarkMode, searchMode)),
   onSearchModeChange: (callback) => ipcRenderer.on('search-mode-changed', (_, searchMode) => callback(searchMode)),
   onDeleteNote: (callback) => ipcRenderer.on('delete-note', callback),
+  onRenameNote: (callback) => ipcRenderer.on('rename-note', callback),
 })
 
 window.testAPI = {
